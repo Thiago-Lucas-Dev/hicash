@@ -13,7 +13,13 @@
 
 ## Pendências e próximos passos
 
-Primeira versão funcional concluída. Próximos passos de uso: cadastrar a primeira conta e os lançamentos reais, manter `php artisan schedule:work` em execução para recorrências e escolher o nome definitivo do sistema.
+Preparação de deploy: autenticação de sessão, proxy Vercel, imagem Northflank, comandos de usuário e recorrências, exemplos de ambiente e `DEPLOYMENT.md` adicionados. Login nas duas plataformas confirmado. Projeto Vercel `thiago-086d/hicash` criado e configurado na conta Hobby; ainda não publicado. A equipe Northflank ainda não tem projetos nem repositórios conectados, e o saldo de créditos é zero. Publicação de produção depende da decisão sobre custos; o Sandbox gratuito Northflank não é recomendado pela plataforma para produção. URLs públicas ainda não existem. Crie o usuário inicial antes do primeiro login.
+
+Identidade oficial HiCash integrada ao frontend: logos por tema, símbolo, paleta semântica, favicon e ícones. O mascote atual permanece apenas como arquivo, sem uso na interface; uma futura versão poderá aparecer exclusivamente no login.
+
+Validação visual da marca: login claro, dashboard e chat escuros, painel flutuante nos dois temas e viewport móvel verificados em prévia local do build. Logos WebP, símbolo, favicons, ícones e manifesto responderam HTTP 200; não houve requisição ao mascote nem rolagem horizontal nos cenários inspecionados.
+
+Validação da preparação: 15 testes Laravel (82 asserções), 9 testes Vitest, build Vite e verificação visual do login em viewport móvel passaram. `migrate:status` confirmou as migrations no MySQL local, sem alterar dados. O container Docker e o proxy publicado ainda não foram executados nas plataformas. As CLIs de Vercel e Northflank foram instaladas e autenticadas posteriormente; Docker continua indisponível neste ambiente.
 
 ## Problemas encontrados
 

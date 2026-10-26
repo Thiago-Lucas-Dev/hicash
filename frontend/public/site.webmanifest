@@ -1,0 +1,24 @@
+{
+  "name": "HiCash — Finanças pessoais",
+  "short_name": "HiCash",
+  "description": "Gestão financeira pessoal com assistente inteligente.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#16A34A",
+  "background_color": "#F3F4F6",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

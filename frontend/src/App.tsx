@@ -35,12 +35,15 @@ import {
   brl,
   json,
   today,
+  resetCsrf,
+  type AuthUser,
   type Account,
   type Category,
   type Transaction,
   type Dashboard,
 } from "./lib/api";
 import { Button, Card, Field, Input, Modal, Select } from "./components/ui";
+import { BrandLogo } from "./components/BrandLogo";
 import { interpret } from "./chatbot/command-handler.js";
 
 type Page =
@@ -151,6 +154,63 @@ const nameOf = (items: { id: number; name: string }[], id: number) =>
   items.find((x) => x.id === id)?.name || "—";
 
 export default function App() {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    const unauthorized = () => setUser(null);
+    window.addEventListener('hicash:unauthorized', unauthorized);
+    api<{ user: AuthUser }>('auth/me')
+      .then((result) => setUser(result.user))
+      .catch(() => setUser(null))
+      .finally(() => setChecking(false));
+    return () => window.removeEventListener('hicash:unauthorized', unauthorized);
+  }, []);
+
+  useEffect(() => {
+    if (!user) document.documentElement.classList.remove("dark");
+  }, [user]);
+
+  if (checking) return <div className="flex min-h-screen items-center justify-center bg-canvas text-ink">Carregando HiCash…</div>;
+  if (!user) return <Login onLogin={setUser} />;
+
+  return <FinanceApp onLogout={() => setUser(null)} />;
+}
+
+function Login({ onLogin }: { onLogin: (user: AuthUser) => void }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const result = await api<{ user: AuthUser }>('auth/login', json('POST', { email, password }));
+      resetCsrf();
+      onLogin(result.user);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Falha ao entrar.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
+    <form onSubmit={submit} className="w-full max-w-sm space-y-5 rounded-2xl border border-outline bg-surface p-8 text-ink shadow-sm">
+      <BrandLogo className="w-52" />
+      <p className="text-sm text-muted">Entre para acessar suas finanças.</p>
+      <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">E-mail<Input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} className="mt-2" /></label>
+      <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Senha<Input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} className="mt-2" /></label>
+      {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+      <Button type="submit" disabled={loading} className="w-full">{loading ? 'Entrando…' : 'Entrar'}</Button>
+    </form>
+  </div>;
+}
+
+function FinanceApp({ onLogout }: { onLogout: () => void }) {
   const [page, setPage] = useState<Page>("dashboard");
   const [mobileMenu, setMobileMenu] = useState(false);
   const [floatingChat, setFloatingChat] = useState(false);
@@ -247,6 +307,16 @@ export default function App() {
       setLoading(false);
     }
   };
+  const logout = async () => {
+    try {
+      await api('auth/logout', { method: 'POST' });
+    } catch {
+      // A sessão local deve ser encerrada mesmo se o servidor estiver indisponível.
+    } finally {
+      resetCsrf();
+      onLogout();
+    }
+  };
   const openForm = (nextKind: FormKind, record?: Record<string, unknown>) => {
     setKind(nextKind);
     setEditing((record?.id as number) || null);
@@ -329,18 +399,13 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="min-h-screen bg-canvas text-ink">
       <div className="mx-auto flex min-h-screen max-w-[1600px]">
         <aside
-          className={`${mobileMenu ? "fixed inset-y-0 left-0 z-30" : "hidden"} w-64 shrink-0 border-r border-slate-200 bg-white px-4 py-6 md:block dark:border-slate-800 dark:bg-slate-900`}
+          className={`${mobileMenu ? "fixed inset-y-0 left-0 z-30" : "hidden"} w-64 shrink-0 border-r border-outline bg-surface px-4 py-6 md:block`}
         >
           <div className="mb-10 flex items-center justify-between px-3">
-            <div className="flex items-center gap-2 text-xl font-extrabold">
-              <span className="rounded-xl bg-teal-600 p-2 text-white">
-                <Wallet size={20} />
-              </span>{" "}
-              Finanças
-            </div>
+            <BrandLogo theme={settings.theme} className="w-44" />
             <Button
               variant="ghost"
               className="md:hidden"
@@ -357,43 +422,46 @@ export default function App() {
                   setPage(item.id);
                   setMobileMenu(false);
                 }}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${page === item.id ? "bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"}`}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${page === item.id ? "bg-brand-soft text-ink" : "text-muted hover:bg-brand-soft hover:text-ink"}`}
               >
                 <item.icon size={19} />
                 {item.label}
               </button>
             ))}
           </nav>
-          <div className="mt-10 rounded-2xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-500 dark:bg-slate-800">
-            Controle local das suas finanças. Dados salvos no MySQL.
+          <div className="mt-10 rounded-2xl bg-canvas p-4 text-xs leading-relaxed text-muted dark:bg-slate-800">
+            Suas finanças organizadas, onde você estiver.
           </div>
         </aside>
         <main className="min-w-0 flex-1 pb-28 md:pb-12">
-          <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-4 backdrop-blur sm:px-8 dark:border-slate-800 dark:bg-slate-900/95">
-            <div className="flex items-center gap-3">
+          <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-outline bg-surface/95 px-4 py-4 backdrop-blur sm:px-8">
+            <div className="flex min-w-0 items-center gap-3">
               <Button
                 variant="ghost"
                 className="md:hidden"
+                aria-label="Abrir menu"
                 onClick={() => setMobileMenu(true)}
               >
                 <Menu size={20} />
               </Button>
+              <BrandLogo compact className="md:hidden" />
               <div>
                 <h1 className="text-lg font-bold sm:text-xl">
                   {menu.find((x) => x.id === page)?.label}
                 </h1>
-                <p className="hidden text-xs text-slate-500 sm:block">
+                <p className="hidden text-xs text-muted sm:block">
                   Seu dinheiro, com clareza.
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+              <Button variant="ghost" onClick={logout}>Sair</Button>
               <Input
                 aria-label="Mês"
                 type="month"
                 value={month}
                 onChange={(e) => setMonth(e.target.value)}
-                className="!w-44"
+                className="!w-48 sm:!w-44"
               />
               <Button
                 variant="ghost"
@@ -431,7 +499,7 @@ export default function App() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className="text-2xl font-bold">Movimentações</h2>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-muted">
                       Receitas, despesas e transferências.
                     </p>
                   </div>
@@ -527,7 +595,7 @@ export default function App() {
                           <tr key={t.id}>
                             <td className="font-medium">
                               {t.description}
-                              <div className="text-xs text-slate-400">
+                              <div className="text-xs text-muted">
                                 {
                                   paymentOptions.find(
                                     (x) => x[0] === t.payment_method,
@@ -540,7 +608,7 @@ export default function App() {
                             <td>{nameOf(accounts, t.account_id)}</td>
                             <td>
                               <span
-                                className={`rounded-full px-2 py-1 text-xs ${t.status === "completed" ? "bg-teal-50 text-teal-700" : "bg-amber-50 text-amber-700"}`}
+                                className={`rounded-full px-2 py-1 text-xs ${t.status === "completed" ? "bg-brand-soft text-finance-positive" : "bg-amber-50 text-amber-700"}`}
                               >
                                 {t.status === "completed"
                                   ? "Concluído"
@@ -550,8 +618,8 @@ export default function App() {
                             <td
                               className={
                                 t.type === "income"
-                                  ? "font-bold text-teal-600"
-                                  : "font-bold text-rose-600"
+                                  ? "font-bold text-finance-positive"
+                                  : "font-bold text-finance-negative"
                               }
                             >
                               {t.type === "income" ? "+" : "−"} {brl(t.amount)}
@@ -599,7 +667,7 @@ export default function App() {
                       </tbody>
                     </table>
                     {!filtered.length && (
-                      <p className="py-8 text-center text-slate-500">
+                      <p className="py-8 text-center text-muted">
                         Nenhum lançamento neste período.
                       </p>
                     )}
@@ -613,12 +681,12 @@ export default function App() {
                       .map((t) => (
                         <div
                           key={t.id}
-                          className="flex items-center justify-between border-b border-slate-100 py-2 text-sm dark:border-slate-800"
+                          className="flex items-center justify-between border-b border-slate-100 py-2 text-sm dark:border-outline"
                         >
                           <span>
                             {nameOf(accounts, t.from_account_id)} →{" "}
                             {nameOf(accounts, t.to_account_id)}{" "}
-                            <span className="text-slate-400">
+                            <span className="text-muted">
                               · {dateLabel(t.reference_date)}
                             </span>
                           </span>
@@ -645,7 +713,7 @@ export default function App() {
                         </div>
                       ))}
                     {!transfers.length && (
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-muted">
                         Nenhuma transferência.
                       </p>
                     )}
@@ -672,7 +740,7 @@ export default function App() {
                         .map((c) => (
                           <div
                             key={c.id}
-                            className="flex items-center justify-between border-b border-slate-100 py-2 text-sm dark:border-slate-800"
+                            className="flex items-center justify-between border-b border-slate-100 py-2 text-sm dark:border-outline"
                           >
                             <span>
                               {c.name}{" "}
@@ -723,7 +791,7 @@ export default function App() {
                         <h3 className="font-bold">{b.category_name}</h3>
                         <span
                           className={
-                            b.alert ? "text-rose-600" : "text-teal-600"
+                            b.alert ? "text-finance-negative" : "text-finance-positive"
                           }
                         >
                           {b.percent}%
@@ -731,11 +799,11 @@ export default function App() {
                       </div>
                       <div className="my-4 h-2 rounded-full bg-slate-100 dark:bg-slate-800">
                         <div
-                          className={`h-full rounded-full ${b.alert ? "bg-rose-500" : "bg-teal-500"}`}
+                          className={`h-full rounded-full ${b.alert ? "bg-finance-negative" : "bg-finance-positive"}`}
                           style={{ width: `${Math.min(b.percent, 100)}%` }}
                         />
                       </div>
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-muted">
                         Usado {brl(b.used)} · Comprometido {brl(b.committed)} de{" "}
                         {brl(b.amount)}
                       </p>
@@ -769,7 +837,7 @@ export default function App() {
                   ))}
                   {!dashboard?.budgets.length && (
                     <Card>
-                      <p className="text-slate-500">
+                      <p className="text-muted">
                         Nenhum limite definido para este mês.
                       </p>
                     </Card>
@@ -791,7 +859,7 @@ export default function App() {
                       <div className="flex justify-between">
                         <div>
                           <h3 className="font-bold">{r.description}</h3>
-                          <p className="text-sm text-slate-500">
+                          <p className="text-sm text-muted">
                             {r.frequency === "monthly"
                               ? "Mensal"
                               : r.frequency === "weekly"
@@ -802,7 +870,7 @@ export default function App() {
                         </div>
                         <strong>{brl(r.amount)}</strong>
                       </div>
-                      <p className="mt-2 text-xs text-slate-500">
+                      <p className="mt-2 text-xs text-muted">
                         {nameOf(categories, r.category_id)} ·{" "}
                         {nameOf(accounts, r.account_id)}
                       </p>
@@ -829,7 +897,7 @@ export default function App() {
                   ))}
                   {!recurrences.length && (
                     <Card>
-                      <p className="text-slate-500">
+                      <p className="text-muted">
                         Nenhuma recorrência cadastrada.
                       </p>
                     </Card>
@@ -866,11 +934,11 @@ export default function App() {
                     {accounts.map((a) => (
                       <div
                         key={a.id}
-                        className="flex items-center justify-between border-b border-slate-100 py-2 dark:border-slate-800"
+                        className="flex items-center justify-between border-b border-slate-100 py-2 dark:border-outline"
                       >
                         <span>
                           {a.name}
-                          <small className="ml-2 text-slate-400">
+                          <small className="ml-2 text-muted">
                             Inicial {brl(a.opening_balance)}
                           </small>
                         </span>
@@ -896,7 +964,7 @@ export default function App() {
                       </div>
                     ))}
                     {!accounts.length && (
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-muted">
                         Crie sua primeira conta para começar.
                       </p>
                     )}
@@ -957,14 +1025,14 @@ export default function App() {
                   </Card>
                   <Card className="lg:col-span-2">
                     <h3 className="mb-3 font-bold">Associações aprendidas</h3>
-                    <p className="mb-3 text-sm text-slate-500">
+                    <p className="mb-3 text-sm text-muted">
                       Palavras associadas a categorias após confirmação ou
                       correção.
                     </p>
                     {aliases.map((a) => (
                       <div
                         key={a.id}
-                        className="flex items-center justify-between border-b border-slate-100 py-2 text-sm dark:border-slate-800"
+                        className="flex items-center justify-between border-b border-slate-100 py-2 text-sm dark:border-outline"
                       >
                         <span>
                           {a.keyword} → {nameOf(categories, a.category_id)}
@@ -978,7 +1046,7 @@ export default function App() {
                       </div>
                     ))}
                     {!aliases.length && (
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-muted">
                         Nenhuma associação aprendida.
                       </p>
                     )}
@@ -1008,11 +1076,11 @@ export default function App() {
               onClick={() => setFloatingChat(false)}
             >
               <div
-                className="absolute bottom-0 right-0 h-[min(85vh,680px)] w-full max-w-[420px] overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:bottom-5 sm:right-5 sm:rounded-2xl dark:bg-slate-900"
+                className="absolute bottom-0 right-0 h-[min(85vh,680px)] w-full max-w-[420px] overflow-hidden rounded-t-2xl bg-surface shadow-2xl sm:bottom-5 sm:right-5 sm:rounded-2xl dark:bg-surface"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex justify-between border-b p-3 dark:border-slate-800">
-                  <strong>Assistente financeiro</strong>
+                <div className="flex justify-between border-b p-3 dark:border-outline">
+                  <strong className="flex items-center gap-2"><img src="/brand/mark-hicash.png" alt="" width="28" height="28" className="h-7 w-7 object-contain" />Assistente HiCash</strong>
                   <Button
                     variant="ghost"
                     onClick={() => setFloatingChat(false)}
@@ -1111,7 +1179,7 @@ function PageHeading({
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h2 className="text-2xl font-bold">{title}</h2>
-        <p className="text-sm text-slate-500">{description}</p>
+        <p className="text-sm text-muted">{description}</p>
       </div>
       {action && (
         <Button onClick={onAction}>
@@ -1302,25 +1370,25 @@ function DashboardPage({
       label: "Saldo efetivo",
       value: effective,
       Icon: Wallet,
-      color: "text-slate-900 dark:text-white",
+      color: "text-ink dark:text-white",
     },
     {
       label: "Saldo previsto",
       value: projected,
       Icon: TrendingUp,
-      color: "text-teal-600",
+      color: "text-finance-positive",
     },
     {
       label: "Receitas",
       value: data?.totals.income || 0,
       Icon: TrendingUp,
-      color: "text-teal-600",
+      color: "text-finance-positive",
     },
     {
       label: "Despesas",
       value: data?.totals.expense || 0,
       Icon: TrendingDown,
-      color: "text-rose-600",
+      color: "text-finance-negative",
     },
   ];
   return (
@@ -1328,7 +1396,7 @@ function DashboardPage({
       <div className="flex flex-wrap justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold">Bem-vindo às suas finanças</h2>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-muted">
             Resumo do período selecionado.
           </p>
         </div>
@@ -1344,7 +1412,7 @@ function DashboardPage({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {metrics.map(({ label, value, Icon, color }) => (
           <Card key={label}>
-            <div className="mb-3 flex items-center justify-between text-sm text-slate-500">
+            <div className="mb-3 flex items-center justify-between text-sm text-muted">
               {label}
               <Icon size={18} />
             </div>
@@ -1365,11 +1433,11 @@ function DashboardPage({
                   layout="vertical"
                   margin={{ left: 15, right: 10 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tickFormatter={(n) => `R$ ${n}`} />
-                  <YAxis type="category" dataKey="name" width={90} />
-                  <Tooltip formatter={(v) => brl(Number(v))} />
-                  <Bar dataKey="value" fill="#0d9488" radius={[0, 6, 6, 0]} />
+                  <CartesianGrid stroke="var(--hicash-border)" strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: "var(--hicash-slate)" }} tickFormatter={(n) => `R$ ${n}`} />
+                  <YAxis type="category" dataKey="name" width={90} tick={{ fill: "var(--hicash-slate)" }} />
+                  <Tooltip formatter={(v) => brl(Number(v))} contentStyle={{ background: "var(--hicash-surface)", borderColor: "var(--hicash-border)", color: "var(--hicash-charcoal)" }} />
+                  <Bar dataKey="value" fill="var(--hicash-expense)" radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -1389,21 +1457,21 @@ function DashboardPage({
                     expense: Number(m.expense),
                   }))}
                 >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip formatter={(v) => brl(Number(v))} />
+                  <CartesianGrid stroke="var(--hicash-border)" strokeDasharray="3 3" />
+                  <XAxis dataKey="month" tick={{ fill: "var(--hicash-slate)" }} />
+                  <YAxis tick={{ fill: "var(--hicash-slate)" }} />
+                  <Tooltip formatter={(v) => brl(Number(v))} contentStyle={{ background: "var(--hicash-surface)", borderColor: "var(--hicash-border)", color: "var(--hicash-charcoal)" }} />
                   <Area
                     type="monotone"
                     dataKey="income"
-                    stroke="#0d9488"
-                    fill="#ccfbf1"
+                    stroke="var(--hicash-success)"
+                    fill="var(--hicash-green-soft)"
                   />
                   <Area
                     type="monotone"
                     dataKey="expense"
-                    stroke="#e11d48"
-                    fill="#ffe4e6"
+                    stroke="var(--hicash-expense)"
+                    fill="var(--hicash-expense-soft)"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -1411,7 +1479,7 @@ function DashboardPage({
               <EmptyChart />
             )}
           </div>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-muted">
             Mês anterior: despesas {brl(data?.previous.expense || 0)}
           </p>
         </Card>
@@ -1422,19 +1490,19 @@ function DashboardPage({
           {data?.balances.map((a) => (
             <div
               key={a.id}
-              className="flex justify-between border-b border-slate-100 py-3 text-sm dark:border-slate-800"
+              className="flex justify-between border-b border-slate-100 py-3 text-sm dark:border-outline"
             >
               <span>{a.name}</span>
               <span>
                 <strong>{brl(a.effective)}</strong>
-                <small className="ml-2 text-slate-500">
+                <small className="ml-2 text-muted">
                   Previsto {brl(a.projected)}
                 </small>
               </span>
             </div>
           ))}
           {!data?.balances.length && (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted">
               Cadastre uma conta para começar.
             </p>
           )}
@@ -1449,14 +1517,14 @@ function DashboardPage({
               </div>
               <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800">
                 <div
-                  className={`h-full rounded-full ${b.alert ? "bg-rose-500" : "bg-teal-500"}`}
+                  className={`h-full rounded-full ${b.alert ? "bg-finance-negative" : "bg-finance-positive"}`}
                   style={{ width: `${Math.min(100, b.percent)}%` }}
                 />
               </div>
             </div>
           ))}
           {!data?.budgets.length && (
-            <p className="text-sm text-slate-500">Nenhum limite neste mês.</p>
+            <p className="text-sm text-muted">Nenhum limite neste mês.</p>
           )}
         </Card>
       </div>
@@ -1466,18 +1534,18 @@ function DashboardPage({
           {data?.recent.map((t) => (
             <div
               key={t.id}
-              className="flex justify-between border-b border-slate-100 py-2 text-sm dark:border-slate-800"
+              className="flex justify-between border-b border-slate-100 py-2 text-sm dark:border-outline"
             >
               <span>
                 {t.description}
-                <small className="ml-2 text-slate-400">
+                <small className="ml-2 text-muted">
                   {nameOf(categories, t.category_id)} ·{" "}
                   {dateLabel(t.reference_date)}
                 </small>
               </span>
               <strong
                 className={
-                  t.type === "income" ? "text-teal-600" : "text-rose-600"
+                  t.type === "income" ? "text-finance-positive" : "text-finance-negative"
                 }
               >
                 {t.type === "income" ? "+" : "−"} {brl(t.amount)}
@@ -1485,13 +1553,13 @@ function DashboardPage({
             </div>
           ))}
           {!transactions.length && (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted">
               Nenhuma movimentação ainda.
             </p>
           )}
         </div>
       </Card>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-muted">
         Despesas no cartão entram nos gastos, mas não reduzem o saldo bancário
         nesta versão.
       </p>
@@ -1500,7 +1568,7 @@ function DashboardPage({
 }
 function EmptyChart() {
   return (
-    <div className="flex h-full items-center justify-center text-sm text-slate-400">
+    <div className="flex h-full items-center justify-center text-sm text-muted">
       Dados aparecerão após seus primeiros lançamentos.
     </div>
   );
@@ -1572,18 +1640,14 @@ function ChatPanel({
   };
   return (
     <div
-      className={`flex flex-col ${full ? "h-[calc(100vh-240px)] min-h-[500px] rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" : "h-[calc(100%-52px)]"}`}
+      className={`flex flex-col ${full ? "h-[calc(100vh-240px)] min-h-[500px] rounded-2xl border border-outline bg-surface dark:border-outline dark:bg-surface" : "h-[calc(100%-52px)]"}`}
     >
       <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
         {!messages.length && (
           <div className="mx-auto max-w-md py-16 text-center">
-            <div className="mx-auto mb-4 w-fit rounded-2xl bg-teal-50 p-4 text-teal-700">
-              <MessageCircle size={28} />
-            </div>
-            <h2 className="text-xl font-bold">Como posso ajudar?</h2>
-            <p className="mt-2 text-sm text-slate-500">
-              Experimente “50 lanche”, “quanto gastei este mês?” ou “como posso
-              economizar?”.
+            <h2 className="text-xl font-bold">Olá! Sou o assistente HiCash.</h2>
+            <p className="mt-2 text-sm text-muted">
+              Posso registrar seus gastos, consultar suas finanças e ajudar você a economizar.
             </p>
           </div>
         )}
@@ -1592,8 +1656,9 @@ function ChatPanel({
             key={m.id}
             className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
+            {m.role === "assistant" && <img src="/brand/mark-hicash.png" alt="" width="28" height="28" loading="lazy" className="mr-2 mt-1 h-7 w-7 shrink-0 object-contain" />}
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${m.role === "user" ? "bg-teal-600 text-white" : "bg-slate-100 dark:bg-slate-800"}`}
+              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${m.role === "user" ? "bg-brand text-brand-on" : "bg-canvas text-ink"}`}
             >
               <p>{m.content}</p>
               {m.role === "assistant" && m.payload && (
@@ -1634,7 +1699,7 @@ function ChatPanel({
           e.preventDefault();
           send();
         }}
-        className="flex gap-2 border-t border-slate-200 p-3 dark:border-slate-800"
+        className="flex gap-2 border-t border-outline p-3 dark:border-outline"
       >
         <Input
           value={text}
@@ -1673,7 +1738,7 @@ function ChatExtras({
         {result.options?.map((o: { id: number; label: string }) => (
           <button
             key={o.id}
-            className="mt-2 block text-left text-xs font-semibold text-teal-600 underline"
+            className="mt-2 block text-left text-xs font-semibold text-finance-positive underline"
             onClick={() => onChoose(String(o.id))}
           >
             {o.label}

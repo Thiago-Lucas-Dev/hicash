@@ -1,0 +1,32 @@
+/* Fonte única das cores da marca e dos papéis semânticos usados pela interface. */
+:root {
+  --hicash-green: #22C55E;
+  --hicash-green-hover: #16A34A;
+  --hicash-green-soft: #DCFCE7;
+  --hicash-green-on: #FFFFFF;
+  --hicash-charcoal: #1F2937;
+  --hicash-slate: #6B7280;
+  --hicash-surface: #FFFFFF;
+  --hicash-background: #F3F4F6;
+  --hicash-border: #D1D5DB;
+  --hicash-danger: #EF4444;
+  --hicash-success: #16A34A;
+  --hicash-expense: #BE123C;
+  --hicash-expense-soft: #FFE4E6;
+  --hicash-focus: #15803D;
+}
+.dark {
+  --hicash-green: #22C55E;
+  --hicash-green-hover: #16A34A;
+  --hicash-green-soft: #143A28;
+  --hicash-charcoal: #F9FAFB;
+  --hicash-slate: #9CA3AF;
+  --hicash-surface: #1F2937;
+  --hicash-background: #111827;
+  --hicash-border: #374151;
+  --hicash-danger: #F87171;
+  --hicash-success: #4ADE80;
+  --hicash-expense: #FB7185;
+  --hicash-expense-soft: #4C0519;
+  --hicash-focus: #86EFAC;
+}

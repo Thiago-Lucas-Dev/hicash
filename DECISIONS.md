@@ -14,5 +14,10 @@
 | D-010 | Agregados monetários calculados com `bcmath` no backend | Evita arredondamento de ponto flutuante em saldos; gráficos recebem valores apenas para visualização. |
 | D-011 | Comandos de chat serializados pelo bloqueio de `chat_state` | Evita execução simultânea repetida e mantém contexto e confirmações coerentes. |
 | D-012 | Categorias iniciais no seeder padrão e dados de apresentação em seeder opcional | Evita misturar dados fictícios com finanças reais. |
+| D-013 | Sessão Laravel e CSRF em toda a API financeira, sem cadastro público | Protege dados na internet e reutiliza a tabela `users` existente. |
+| D-014 | Proxy de servidor na Vercel para `/api/v1` | Mantém cookies de sessão no domínio do frontend com domínios gerados por plataformas diferentes. |
+| D-015 | Imagem Docker PHP-FPM/Nginx e MySQL privado no Northflank | Separa produção do servidor de desenvolvimento e mantém persistência no addon. |
+| D-016 | Cron Job Northflank com comando Artisan finito, de hora em hora | Executa sem acesso ao frontend e recupera atrasos sem scheduler concorrente. |
+| D-017 | Logos, símbolo, paleta e ícones oficiais HiCash no frontend | Centraliza a identidade nos temas claro/escuro e preserva os fluxos financeiros e do chat. O mascote atual não é utilizado; uma nova versão poderá ser aplicada apenas no login em mudança futura. Por escolha de marca, ações com fundo `#22C55E` usam texto branco apesar do contraste de 2,28:1, abaixo da meta WCAG para texto pequeno. |
 
 Novas decisões relevantes devem ser acrescentadas aqui com a respectiva justificativa. Alterações funcionais também devem atualizar a documentação específica.

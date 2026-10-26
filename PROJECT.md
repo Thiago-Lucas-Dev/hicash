@@ -1,4 +1,4 @@
-# Sistema financeiro pessoal (nome a definir)
+# HiCash
 
 ## Objetivo
 
@@ -13,7 +13,7 @@ Aplicação web local para um usuário registrar e acompanhar receitas, despesas
 - Recorrências cadastradas por formulário e geradas como pendentes pelo Laravel Scheduler.
 - Configurações de contas, padrões, preferências e tema claro/escuro. Interface para desktop e celular.
 
-Valores por extenso, faturas de cartão, autenticação e IA externa ficam fora da primeira versão. Despesas no cartão entram nos relatórios e orçamentos, mas não reduzem imediatamente o saldo bancário. A interface informa essa limitação.
+Valores por extenso, faturas de cartão e IA externa ficam fora da primeira versão. A publicação pública acrescentou autenticação de usuário único. Despesas no cartão entram nos relatórios e orçamentos, mas não reduzem imediatamente o saldo bancário. A interface informa essa limitação.
 
 ## Tecnologias
 

@@ -1,10 +1,13 @@
 import { test, expect } from "@playwright/test";
+import { login } from './login';
+
+test.skip(process.env.E2E_ALLOW_WRITE !== 'true', 'Somente em banco descartável com E2E_ALLOW_WRITE=true.');
 
 test("conta, lançamento, dashboard e assistente usam os mesmos dados", async ({
   page,
 }) => {
   const suffix = Date.now().toString();
-  await page.goto("/");
+  await login(page);
   await page.getByRole("button", { name: "Configurações" }).click();
   await page.getByRole("button", { name: "Conta", exact: true }).click();
   await page.getByLabel("Nome").fill(`Banco E2E ${suffix}`);

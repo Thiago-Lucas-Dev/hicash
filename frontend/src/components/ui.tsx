@@ -14,14 +14,14 @@ import { twMerge } from "tailwind-merge";
 export const cn = (...classes: (string | undefined | false)[]) =>
   twMerge(clsx(classes));
 const buttonStyles = cva(
-  "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-500",
+  "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-focus",
   {
     variants: {
       variant: {
-        primary: "bg-teal-600 text-white hover:bg-teal-700",
+        primary: "bg-brand text-brand-on hover:bg-brand-hover",
         secondary:
-          "bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-white",
-        ghost: "hover:bg-slate-100 dark:hover:bg-slate-800",
+          "bg-canvas text-ink hover:bg-brand-soft",
+        ghost: "text-ink hover:bg-brand-soft",
         danger: "bg-rose-600 text-white hover:bg-rose-700",
       },
     },
@@ -43,7 +43,7 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
-        "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900",
+        "rounded-2xl border border-outline bg-surface p-5 shadow-sm",
         className,
       )}
       {...props}
@@ -55,7 +55,7 @@ export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={cn(
-        "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-950",
+        "w-full rounded-xl border border-outline bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-brand-focus focus-visible:ring-2 focus-visible:ring-brand-focus",
         props.className,
       )}
     />
@@ -66,7 +66,7 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
     <select
       {...props}
       className={cn(
-        "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-950",
+        "w-full rounded-xl border border-outline bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-brand-focus focus-visible:ring-2 focus-visible:ring-brand-focus",
         props.className,
       )}
     />
@@ -80,7 +80,7 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="grid gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">
+    <label className="grid gap-1.5 text-sm font-medium text-muted">
       <span>{label}</span>
       {children}
     </label>
@@ -101,7 +101,7 @@ export function Modal({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-slate-950/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[min(94vw,620px)] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[min(94vw,620px)] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-2xl bg-surface p-6 text-ink shadow-2xl">
           <div className="mb-5 flex items-center justify-between">
             <Dialog.Title className="text-xl font-bold">{title}</Dialog.Title>
             <Dialog.Close asChild>

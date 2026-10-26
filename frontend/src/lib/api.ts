@@ -46,20 +46,51 @@ export type Dashboard = {
   previous: Record<string, string>;
 };
 
+export type AuthUser = { id: number; name: string; email: string };
+
+let csrfToken: string | null = null;
+
+export function resetCsrf() {
+  csrfToken = null;
+}
+
+async function getCsrf(): Promise<string> {
+  if (csrfToken) return csrfToken;
+  const response = await fetch('/api/v1/auth/csrf', {
+    headers: { Accept: 'application/json' },
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Não foi possível iniciar uma sessão segura.');
+  csrfToken = (await response.json()).token;
+  return csrfToken!;
+}
+
 export async function api<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const method = (options.method || 'GET').toUpperCase();
+  const csrf = ['GET', 'HEAD', 'OPTIONS'].includes(method) ? null : await getCsrf();
   const response = await fetch(`/api/v1/${path}`, {
     ...options,
+    credentials: 'same-origin',
+    cache: 'no-store',
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
+      ...(csrf ? { 'X-CSRF-TOKEN': csrf } : {}),
       ...options.headers,
     },
   });
+  if (response.status === 401 || response.status === 419) {
+    resetCsrf();
+    window.dispatchEvent(new Event('hicash:unauthorized'));
+  }
   if (response.status === 204) return undefined as T;
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401) throw new Error('Faça login para continuar.');
+  if (response.status === 419) throw new Error('Sessão expirada. Faça login novamente.');
   if (!response.ok)
     throw new Error(
       data.message ||

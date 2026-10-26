@@ -24,10 +24,14 @@ API JSON versionada em `/api/v1` para contas, movimentações, transferências, 
 
 `POST /api/v1/chat/commands` recebe `{command_id, message, interpretation}`. A linha única de `chat_state` é bloqueada durante a operação; o identificador é consultado sob esse bloqueio e a resposta é guardada em `processed_commands`. O estado guarda a confirmação ou escolha pendente e as 12 últimas interações resumidas. O histórico integral permanece em `chat_messages`.
 
-Datas de referência são datas civis no fuso `America/Sao_Paulo`. O servidor é a fonte de verdade para saldos e relatórios. A API fica restrita ao ambiente local nesta versão, sem autenticação. Credenciais ficam em `.env`, fora do repositório.
+Datas de referência são datas civis no fuso `America/Sao_Paulo`. O servidor é a fonte de verdade para saldos e relatórios. As rotas financeiras e de chat exigem sessão Laravel autenticada, com CSRF e sem cadastro público. Credenciais ficam fora do repositório.
+
+Na hospedagem, o React/Vite da Vercel encaminha `/api/v1` por uma função de servidor ao Laravel no Northflank. O cookie de sessão permanece no domínio do frontend. O MySQL privado do Northflank guarda finanças, sessão e cache. Consulte `DEPLOYMENT.md` para detalhes operacionais.
 
 ## Recorrências e IA futura
 
 Regras de recorrência são criadas por formulário. O scheduler gera ocorrências devidas, sempre pendentes, com chave única por regra e data, inclusive após interrupção. Uma ocorrência pode ser editada isoladamente; mudanças em todas as futuras alteram a regra a partir da data escolhida.
 
 Um adaptador opcional de IA poderá propor intenções. Suas propostas passam pelas mesmas validações e execução Laravel; a ausência da API externa não impede o uso do assistente determinístico.
+
+Na hospedagem, um Cron Job Northflank executa diretamente um comando Artisan finito de recorrências a cada hora. O Scheduler continua disponível apenas no ambiente local.
