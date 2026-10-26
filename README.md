@@ -1,15 +1,15 @@
-# Sistema financeiro pessoal
+# HiCash
 
-Aplicação local de finanças pessoais com React, Laravel, MySQL e assistente determinístico em JavaScript. O nome definitivo está em aberto.
+Aplicação de finanças pessoais com React, Laravel, MySQL e assistente determinístico em JavaScript. Funciona localmente e está preparada para Vercel + Railway.
 
 ## Preparação no Windows
 
 1. No MySQL Workbench, crie um banco vazio: `CREATE DATABASE hicash CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`.
 2. No diretório `backend`, copie `.env.example` para `.env` e informe `DB_USERNAME` e `DB_PASSWORD`. Mantenha esse arquivo fora do Git.
-3. Execute no `backend`: `php C:\ProgramData\ComposerSetup\bin\composer.phar install`, `php artisan key:generate`, `php artisan migrate` e `php artisan db:seed`.
+3. Execute no `backend`: `composer install`, `php artisan key:generate`, `php artisan migrate`, `php artisan db:seed` e `php artisan hicash:user:create`.
 4. Execute no `frontend`: `npm install`.
 5. Em terminais separados, execute `php artisan serve --host=127.0.0.1 --port=8000` no `backend`, `php artisan schedule:work` no `backend` e `npm run dev` no `frontend`.
-6. Abra o endereço indicado pelo Vite, normalmente `http://localhost:5173`. O proxy do Vite encaminha `/api` ao Laravel local.
+6. Abra o endereço indicado pelo Vite, normalmente `http://localhost:5173`, e faça login. O proxy encaminha `/api` ao Laravel local e traduz o endpoint CSRF para o Sanctum.
 
 `php artisan db:seed --class=DemoSeeder` cria dados opcionais de apresentação. Use somente em um banco de demonstração.
 
@@ -24,4 +24,4 @@ Os testes Laravel usam SQLite em memória para isolar os cenários. A aplicaçã
 
 ## Referência
 
-Consulte `PROJECT.md`, `ARCHITECTURE.md`, `CHATBOT_SPEC.md`, `DECISIONS.md` e `PROGRESS.md` antes de alterar funcionalidades. A API é local e não possui autenticação nesta versão; não a exponha publicamente.
+Consulte `PROJECT.md`, `ARCHITECTURE.md`, `CHATBOT_SPEC.md`, `DECISIONS.md`, `PROGRESS.md` e `DEPLOYMENT.md` antes de alterar funcionalidades ou publicar uma versão.

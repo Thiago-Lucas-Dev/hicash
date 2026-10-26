@@ -14,5 +14,10 @@
 | D-010 | Agregados monetários calculados com `bcmath` no backend | Evita arredondamento de ponto flutuante em saldos; gráficos recebem valores apenas para visualização. |
 | D-011 | Comandos de chat serializados pelo bloqueio de `chat_state` | Evita execução simultânea repetida e mantém contexto e confirmações coerentes. |
 | D-012 | Categorias iniciais no seeder padrão e dados de apresentação em seeder opcional | Evita misturar dados fictícios com finanças reais. |
+| D-013 | Sessão Laravel Sanctum por proxy Vercel, com cookie `HttpOnly` e CSRF | Evita token persistido no navegador e cookies de terceiros entre domínios gratuitos. |
+| D-014 | Um único usuário global, sem cadastro público e sem `user_id` financeiro | Protege a arquitetura originalmente pessoal sem reestruturar regras de negócio. |
+| D-015 | Railpack/FrankenPHP para a API e MySQL privado no Railway | Usa o runtime oficialmente detectado pela plataforma, sem servidor de desenvolvimento. |
+| D-016 | Railway Cron chama `hicash:recurrences` diretamente às 03:10 UTC | O processo termina, tolera atraso e evita a imprecisão de casar `schedule:run` com um único minuto. |
+| D-017 | React Router com rotas protegidas por seção | Permite deep links e preserva a tela após recarregar a aplicação. |
 
 Novas decisões relevantes devem ser acrescentadas aqui com a respectiva justificativa. Alterações funcionais também devem atualizar a documentação específica.

@@ -9,11 +9,11 @@
 - Etapa 4 — Chatbot básico: módulos JS, registros, consultas e respostas implementados.
 - Etapa 5 — Chatbot avançado: contexto recente, complemento de descrição, correção, exclusão confirmada, desfazer, comandos múltiplos e associações implementados.
 - Etapa 6 — Recorrências: formulário, scheduler, recuperação, edição de ocorrência e alteração das futuras com proteção contra duplicatas implementados.
-- Etapa 7 — Validação e acabamento: 8 testes Laravel, 6 testes Vitest, build de produção, fluxo Chrome completo em banco descartável, teste visual de leitura no MySQL e teste transacional da API no MySQL passando.
+- Etapa 7 — Validação e acabamento: 16 testes Laravel (76 asserções), 11 testes Vitest, build de produção, cache de produção Laravel, fluxo Chrome completo em banco descartável, teste visual de leitura no MySQL e teste transacional da API no MySQL passando.
 
 ## Pendências e próximos passos
 
-Primeira versão funcional concluída. Próximos passos de uso: cadastrar a primeira conta e os lançamentos reais, manter `php artisan schedule:work` em execução para recorrências e escolher o nome definitivo do sistema.
+Preparação de produção implementada: autenticação individual, rotas protegidas, healthcheck, comando de recorrências, proxy same-origin, fallback SPA, configuração Vercel/Railway e documentação. O projeto Vercel `thiago-086d/hicash` foi criado, mas a conexão GitHub ainda requer uma Login Connection. A criação da conta Railway está bloqueada pela mensagem da plataforma `Sign ups are currently disabled. Please try again later.`; por isso ainda não há API, MySQL, Cron, URLs públicas ou smoke tests remotos. A continuidade do Railway Cron após o trial depende de autorização de custo.
 
 ## Problemas encontrados
 

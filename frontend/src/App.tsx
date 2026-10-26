@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -18,6 +19,7 @@ import {
   Check,
   TrendingUp,
   TrendingDown,
+  LogOut,
 } from "lucide-react";
 import {
   Area,
@@ -39,6 +41,7 @@ import {
   type Category,
   type Transaction,
   type Dashboard,
+  type AuthUser,
 } from "./lib/api";
 import { Button, Card, Field, Input, Modal, Select } from "./components/ui";
 import { interpret } from "./chatbot/command-handler.js";
@@ -97,6 +100,18 @@ const menu: { id: Page; label: string; icon: typeof Wallet }[] = [
   { id: "chat", label: "Assistente", icon: MessageCircle },
   { id: "settings", label: "Configurações", icon: SettingsIcon },
 ];
+const pagePaths: Record<Page, string> = {
+  dashboard: "/dashboard",
+  transactions: "/movimentacoes",
+  categories: "/categorias",
+  budgets: "/orcamentos",
+  recurrences: "/recorrencias",
+  chat: "/assistente",
+  settings: "/configuracoes",
+};
+const pagesByPath = Object.fromEntries(
+  Object.entries(pagePaths).map(([page, path]) => [path, page]),
+) as Record<string, Page>;
 const paymentOptions = [
   ["pix", "Pix"],
   ["debit", "Débito"],
@@ -150,8 +165,17 @@ const dateLabel = (date: string) =>
 const nameOf = (items: { id: number; name: string }[], id: number) =>
   items.find((x) => x.id === id)?.name || "—";
 
-export default function App() {
-  const [page, setPage] = useState<Page>("dashboard");
+export default function App({
+  user,
+  onLogout,
+}: {
+  user: AuthUser;
+  onLogout: () => Promise<void>;
+}) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const page = pagesByPath[location.pathname] || "dashboard";
+  const setPage = (nextPage: Page) => navigate(pagePaths[nextPage]);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [floatingChat, setFloatingChat] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -181,6 +205,12 @@ export default function App() {
   const [future, setFuture] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!pagesByPath[location.pathname]) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [location.pathname, navigate]);
 
   const period = useMemo(
     () => ({
@@ -339,7 +369,7 @@ export default function App() {
               <span className="rounded-xl bg-teal-600 p-2 text-white">
                 <Wallet size={20} />
               </span>{" "}
-              Finanças
+              HiCash
             </div>
             <Button
               variant="ghost"
@@ -365,7 +395,7 @@ export default function App() {
             ))}
           </nav>
           <div className="mt-10 rounded-2xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-500 dark:bg-slate-800">
-            Controle local das suas finanças. Dados salvos no MySQL.
+            Seus dados financeiros protegidos no MySQL.
           </div>
         </aside>
         <main className="min-w-0 flex-1 pb-28 md:pb-12">
@@ -405,6 +435,13 @@ export default function App() {
                 ) : (
                   <Moon size={19} />
                 )}
+              </Button>
+              <Button
+                variant="ghost"
+                aria-label={`Sair da conta de ${user.name}`}
+                onClick={onLogout}
+              >
+                <LogOut size={19} />
               </Button>
             </div>
           </header>

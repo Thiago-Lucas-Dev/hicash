@@ -46,28 +46,87 @@ export type Dashboard = {
   previous: Record<string, string>;
 };
 
+export type AuthUser = {
+  id: number;
+  name: string;
+  email: string;
+};
+
+export class ApiError extends Error {
+  public readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "/api/v1").replace(
+  /\/$/,
+  "",
+);
+const csrfUrl = import.meta.env.VITE_CSRF_URL || "/api/csrf-cookie";
+
+const xsrfToken = () => {
+  const cookie = document.cookie
+    .split("; ")
+    .find((item) => item.startsWith("XSRF-TOKEN="));
+
+  return cookie ? decodeURIComponent(cookie.slice("XSRF-TOKEN=".length)) : null;
+};
+
+export async function csrf(): Promise<void> {
+  const response = await fetch(csrfUrl, {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(
+      "Não foi possível iniciar uma sessão segura.",
+      response.status,
+    );
+  }
+}
+
 export async function api<T>(
   path: string,
   options: RequestInit = {},
+  retryCsrf = true,
 ): Promise<T> {
-  const response = await fetch(`/api/v1/${path}`, {
+  const method = (options.method || "GET").toUpperCase();
+  const token = xsrfToken();
+  const response = await fetch(`${apiBaseUrl}/${path}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
+      ...(token && !["GET", "HEAD", "OPTIONS"].includes(method)
+        ? { "X-XSRF-TOKEN": token }
+        : {}),
       ...options.headers,
     },
   });
+  if (response.status === 419 && retryCsrf) {
+    await csrf();
+    return api<T>(path, options, false);
+  }
   if (response.status === 204) return undefined as T;
   const data = await response.json().catch(() => ({}));
-  if (!response.ok)
-    throw new Error(
+  if (!response.ok) {
+    if (response.status === 401) {
+      window.dispatchEvent(new Event("hicash:unauthorized"));
+    }
+    throw new ApiError(
       data.message ||
         Object.values(data.errors || {})
           .flat()
           .join(" ") ||
         "Falha ao comunicar com a API",
+      response.status,
     );
+  }
   return data as T;
 }
 export const json = (method: string, body: unknown): RequestInit => ({

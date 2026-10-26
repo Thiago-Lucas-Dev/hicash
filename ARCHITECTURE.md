@@ -24,7 +24,11 @@ API JSON versionada em `/api/v1` para contas, movimentações, transferências, 
 
 `POST /api/v1/chat/commands` recebe `{command_id, message, interpretation}`. A linha única de `chat_state` é bloqueada durante a operação; o identificador é consultado sob esse bloqueio e a resposta é guardada em `processed_commands`. O estado guarda a confirmação ou escolha pendente e as 12 últimas interações resumidas. O histórico integral permanece em `chat_messages`.
 
-Datas de referência são datas civis no fuso `America/Sao_Paulo`. O servidor é a fonte de verdade para saldos e relatórios. A API fica restrita ao ambiente local nesta versão, sem autenticação. Credenciais ficam em `.env`, fora do repositório.
+Datas de referência são datas civis no fuso `America/Sao_Paulo`. O servidor é a fonte de verdade para saldos e relatórios. A API exige a sessão Sanctum do único usuário autorizado; não existe cadastro público. Credenciais ficam em variáveis de ambiente, fora do repositório.
+
+## Produção
+
+O React é hospedado na Vercel e uma Function server-side encaminha `/api` ao Laravel no Railway, mantendo sessão `HttpOnly` e CSRF same-origin sem expor configuração sensível no bundle. O endpoint local `/api/csrf-cookie` é traduzido para `/sanctum/csrf-cookie` no upstream. O backend usa Railpack/FrankenPHP e MySQL privado. Um serviço Railway Cron separado chama diretamente o comando idempotente de recorrências e termina; nenhum scheduler concorrente roda em produção.
 
 ## Recorrências e IA futura
 
