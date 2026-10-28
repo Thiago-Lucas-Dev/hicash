@@ -7,7 +7,7 @@ export async function login(page: Page) {
 
   await page.goto('/');
   await page.getByLabel('E-mail').fill(email);
-  await page.getByLabel('Senha').fill(password);
-  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.getByLabel('Senha', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Entrar na minha conta' }).click();
   await expect(page.getByRole('heading', { name: 'Visão geral' })).toBeVisible();
 }

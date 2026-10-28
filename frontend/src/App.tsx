@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -18,6 +18,8 @@ import {
   Check,
   TrendingUp,
   TrendingDown,
+  Maximize2,
+  Info,
 } from "lucide-react";
 import {
   Area,
@@ -26,6 +28,7 @@ import {
   BarChart,
   CartesianGrid,
   ResponsiveContainer,
+  Legend,
   Tooltip,
   XAxis,
   YAxis,
@@ -42,8 +45,11 @@ import {
   type Transaction,
   type Dashboard,
 } from "./lib/api";
-import { Button, Card, Field, Input, Modal, Select } from "./components/ui";
+import { AppSelect, Button, Card, ConfirmDialog, Field, Input, Modal } from "./components/ui";
 import { BrandLogo } from "./components/BrandLogo";
+import { LoginPage } from "./components/LoginPage";
+import { PeriodPicker, UserProfile } from "./components/TopbarControls";
+import { ChatResult } from "./components/ChatResult";
 import { interpret } from "./chatbot/command-handler.js";
 
 type Page =
@@ -172,45 +178,12 @@ export default function App() {
   }, [user]);
 
   if (checking) return <div className="flex min-h-screen items-center justify-center bg-canvas text-ink">Carregando HiCash…</div>;
-  if (!user) return <Login onLogin={setUser} />;
+  if (!user) return <LoginPage onLogin={setUser} />;
 
-  return <FinanceApp onLogout={() => setUser(null)} />;
+  return <FinanceApp user={user} onLogout={() => setUser(null)} />;
 }
 
-function Login({ onLogin }: { onLogin: (user: AuthUser) => void }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setLoading(true);
-    setError('');
-    try {
-      const result = await api<{ user: AuthUser }>('auth/login', json('POST', { email, password }));
-      resetCsrf();
-      onLogin(result.user);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Falha ao entrar.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
-    <form onSubmit={submit} className="w-full max-w-sm space-y-5 rounded-2xl border border-outline bg-surface p-8 text-ink shadow-sm">
-      <BrandLogo className="w-52" />
-      <p className="text-sm text-muted">Entre para acessar suas finanças.</p>
-      <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">E-mail<Input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} className="mt-2" /></label>
-      <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Senha<Input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} className="mt-2" /></label>
-      {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
-      <Button type="submit" disabled={loading} className="w-full">{loading ? 'Entrando…' : 'Entrar'}</Button>
-    </form>
-  </div>;
-}
-
-function FinanceApp({ onLogout }: { onLogout: () => void }) {
+function FinanceApp({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const [page, setPage] = useState<Page>("dashboard");
   const [mobileMenu, setMobileMenu] = useState(false);
   const [floatingChat, setFloatingChat] = useState(false);
@@ -240,7 +213,9 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
   const [editing, setEditing] = useState<number | null>(null);
   const [future, setFuture] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ route: string; id: number } | null>(null);
 
   const period = useMemo(
     () => ({
@@ -293,6 +268,18 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
       settings.theme === "dark",
     );
   }, [settings.theme]);
+  const closeFloatingChat = () => {
+    setFloatingChat(false);
+    requestAnimationFrame(() => document.getElementById("open-assistant")?.focus());
+  };
+  useEffect(() => {
+    if (!floatingChat) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") closeFloatingChat(); };
+    const previousOverflow = document.body.style.overflow;
+    if (window.matchMedia("(max-width: 639px)").matches) document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener("keydown", closeOnEscape); };
+  }, [floatingChat]);
 
   const mutate = async (path: string, method: string, body?: unknown) => {
     setLoading(true);
@@ -301,8 +288,10 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
       await reload();
       setKind(null);
       setError("");
+      setNotice(method === "DELETE" ? "Item excluído com sucesso." : "Alterações salvas com sucesso.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao salvar");
+      setNotice("");
     } finally {
       setLoading(false);
     }
@@ -375,8 +364,7 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
       );
   };
   const remove = async (route: string, id: number) => {
-    if (window.confirm("Confirma a exclusão?"))
-      await mutate(`${route}/${id}`, "DELETE");
+    setDeleteTarget({ route, id });
   };
   const toggleTheme = async () => {
     const next: Settings = {
@@ -400,21 +388,24 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
-      <div className="mx-auto flex min-h-screen max-w-[1600px]">
+      {mobileMenu && <button type="button" aria-label="Fechar menu" className="fixed inset-0 z-30 bg-slate-950/50 md:hidden" onClick={() => setMobileMenu(false)} />}
+      <div className="mx-auto flex min-h-screen max-w-[1800px]">
         <aside
-          className={`${mobileMenu ? "fixed inset-y-0 left-0 z-30" : "hidden"} w-64 shrink-0 border-r border-outline bg-surface px-4 py-6 md:block`}
+          className={`${mobileMenu ? "fixed inset-y-0 left-0 z-40" : "hidden"} w-64 shrink-0 border-r border-outline bg-surface px-3 py-5 md:sticky md:top-0 md:block md:h-screen md:px-4 md:py-7`}
         >
           <div className="mb-10 flex items-center justify-between px-3">
-            <BrandLogo theme={settings.theme} className="w-44" />
+            <BrandLogo theme={settings.theme} className="w-36" />
             <Button
               variant="ghost"
-              className="md:hidden"
+              className="min-h-8 px-2 md:hidden"
+              aria-label="Fechar menu"
               onClick={() => setMobileMenu(false)}
             >
               <X size={18} />
             </Button>
           </div>
-          <nav className="space-y-1">
+          <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.13em] text-muted">Menu principal</p>
+          <nav aria-label="Navegação principal" className="space-y-1">
             {menu.map((item) => (
               <button
                 key={item.id}
@@ -422,23 +413,22 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                   setPage(item.id);
                   setMobileMenu(false);
                 }}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${page === item.id ? "bg-brand-soft text-ink" : "text-muted hover:bg-brand-soft hover:text-ink"}`}
+                aria-current={page === item.id ? "page" : undefined}
+                className={`group flex min-h-11 w-full items-center gap-3 rounded-[var(--radius-control)] border-l-[3px] px-3 py-2 text-left text-sm transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-focus ${page === item.id ? "border-brand bg-brand-subtle font-semibold text-action dark:bg-brand-soft dark:text-finance-positive" : "border-transparent font-medium text-muted hover:bg-surface-subtle hover:text-ink"}`}
               >
-                <item.icon size={19} />
+                <item.icon size={18} strokeWidth={page === item.id ? 2.2 : 1.9} className="shrink-0" />
                 {item.label}
               </button>
             ))}
           </nav>
-          <div className="mt-10 rounded-2xl bg-canvas p-4 text-xs leading-relaxed text-muted dark:bg-slate-800">
-            Suas finanças organizadas, onde você estiver.
-          </div>
+          <div className="mt-10 border-t border-outline px-3 pt-5 text-xs font-medium text-muted">HiCash · Finanças pessoais</div>
         </aside>
         <main className="min-w-0 flex-1 pb-28 md:pb-12">
-          <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-outline bg-surface/95 px-4 py-4 backdrop-blur sm:px-8">
+          <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-outline bg-surface/95 px-4 py-3 backdrop-blur sm:px-7 lg:px-9">
             <div className="flex min-w-0 items-center gap-3">
               <Button
                 variant="ghost"
-                className="md:hidden"
+                className="min-h-9 px-2 md:hidden"
                 aria-label="Abrir menu"
                 onClick={() => setMobileMenu(true)}
               >
@@ -446,7 +436,7 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
               </Button>
               <BrandLogo compact className="md:hidden" />
               <div>
-                <h1 className="text-lg font-bold sm:text-xl">
+                <h1 className="text-base font-semibold tracking-tight sm:text-lg">
                   {menu.find((x) => x.id === page)?.label}
                 </h1>
                 <p className="hidden text-xs text-muted sm:block">
@@ -455,14 +445,7 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
               </div>
             </div>
             <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
-              <Button variant="ghost" onClick={logout}>Sair</Button>
-              <Input
-                aria-label="Mês"
-                type="month"
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
-                className="!w-48 sm:!w-44"
-              />
+              <PeriodPicker value={month} onChange={setMonth} />
               <Button
                 variant="ghost"
                 aria-label="Alternar tema"
@@ -474,13 +457,16 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                   <Moon size={19} />
                 )}
               </Button>
+              <span aria-hidden="true" className="mx-1 hidden h-7 w-px bg-outline sm:block" />
+              <UserProfile user={user} onSettings={() => { setPage("settings"); setMobileMenu(false); }} onLogout={logout} />
             </div>
           </header>
-          <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-8">
+          <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-7 lg:p-9">
+            {notice && <div role="status" className="flex items-center justify-between gap-2 rounded-[var(--radius-control)] border border-brand/20 bg-brand-subtle px-4 py-3 text-sm text-action dark:bg-brand-soft dark:text-finance-positive"><span>{notice}</span><button type="button" aria-label="Dispensar aviso" onClick={() => setNotice("")}><X size={16} /></button></div>}
             {error && (
               <div
                 role="alert"
-                className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700 dark:bg-rose-950 dark:text-rose-200"
+                className="rounded-[var(--radius-control)] border border-danger/25 bg-danger-soft p-4 text-sm text-danger-ink"
               >
                 {error}
               </div>
@@ -498,8 +484,8 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
               <section className="space-y-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-2xl font-bold">Movimentações</h2>
-                    <p className="text-sm text-muted">
+                    <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">Movimentações</h2>
+                    <p className="mt-1 text-sm text-muted">
                       Receitas, despesas e transferências.
                     </p>
                   </div>
@@ -516,7 +502,7 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                   </div>
                 </div>
                 <Card>
-                  <div className="mb-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                  <div className="mb-5 grid gap-3 border-b border-outline pb-5 sm:grid-cols-2 lg:grid-cols-5">
                     {[
                       [
                         "type",
@@ -559,26 +545,22 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                       ],
                     ].map(([key, label, opts]) => (
                       <Field key={key as string} label={label as string}>
-                        <Select
+                        <AppSelect
                           value={filters[key as keyof typeof filters]}
-                          onChange={(e) =>
+                          onValueChange={(value) =>
                             setFilters({
                               ...filters,
-                              [key as string]: e.target.value,
+                              [key as string]: value,
                             })
                           }
-                        >
-                          {(opts as string[][]).map(([value, text]) => (
-                            <option key={value} value={value}>
-                              {text}
-                            </option>
-                          ))}
-                        </Select>
+                          options={(opts as string[][]).map(([value, label]) => ({ value, label }))}
+                          ariaLabel={label as string}
+                        />
                       </Field>
                     ))}
                   </div>
-                  <div className="overflow-x-auto">
-                    <table>
+                  <div className="overflow-x-auto rounded-[var(--radius-control)] border border-outline">
+                    <table className="finance-table">
                       <thead>
                         <tr>
                           <th>Descrição</th>
@@ -593,7 +575,7 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                       <tbody>
                         {filtered.map((t) => (
                           <tr key={t.id}>
-                            <td className="font-medium">
+                            <td data-label="Descrição" className="font-medium">
                               {t.description}
                               <div className="text-xs text-muted">
                                 {
@@ -603,32 +585,33 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                                 }
                               </div>
                             </td>
-                            <td>{dateLabel(t.reference_date)}</td>
-                            <td>{nameOf(categories, t.category_id)}</td>
-                            <td>{nameOf(accounts, t.account_id)}</td>
-                            <td>
+                            <td data-label="Data">{dateLabel(t.reference_date)}</td>
+                            <td data-label="Categoria">{nameOf(categories, t.category_id)}</td>
+                            <td data-label="Conta">{nameOf(accounts, t.account_id)}</td>
+                            <td data-label="Status">
                               <span
-                                className={`rounded-full px-2 py-1 text-xs ${t.status === "completed" ? "bg-brand-soft text-finance-positive" : "bg-amber-50 text-amber-700"}`}
+                              className={`rounded-[var(--radius-small)] px-2 py-1 text-xs font-medium ${t.status === "completed" ? "bg-brand-subtle text-action dark:bg-brand-soft dark:text-finance-positive" : "bg-warning-soft text-warning"}`}
                               >
                                 {t.status === "completed"
                                   ? "Concluído"
                                   : "Pendente"}
                               </span>
                             </td>
-                            <td
-                              className={
+                            <td data-label="Valor"
+                              className={`money ${
                                 t.type === "income"
                                   ? "font-bold text-finance-positive"
                                   : "font-bold text-finance-negative"
-                              }
+                              }`}
                             >
                               {t.type === "income" ? "+" : "−"} {brl(t.amount)}
                             </td>
-                            <td>
+                            <td data-label="Ações">
                               <div className="flex gap-1">
                                 <Button
                                   variant="ghost"
-                                  aria-label="Editar"
+                                  aria-label={`Editar ${t.description}`}
+                                  title="Editar movimentação"
                                   onClick={() =>
                                     openForm(
                                       "transaction",
@@ -641,7 +624,8 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                                 {t.status === "pending" && (
                                   <Button
                                     variant="ghost"
-                                    aria-label="Concluir"
+                                    aria-label={`Concluir ${t.description}`}
+                                    title="Concluir movimentação"
                                     onClick={() =>
                                       mutate(
                                         `transactions/${t.id}/status`,
@@ -655,7 +639,9 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                                 )}
                                 <Button
                                   variant="ghost"
-                                  aria-label="Excluir"
+                                  aria-label={`Excluir ${t.description}`}
+                                  title="Excluir movimentação"
+                                  className="text-danger-ink hover:bg-danger-soft hover:text-danger-ink"
                                   onClick={() => remove("transactions", t.id)}
                                 >
                                   <Trash2 size={16} />
@@ -674,14 +660,14 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                   </div>
                 </Card>
                 <Card>
-                  <h3 className="mb-3 font-bold">Transferências internas</h3>
+                  <h3 className="mb-3 text-base font-semibold">Transferências internas</h3>
                   <div className="space-y-2">
                     {transfers
                       .filter((t) => t.reference_date.startsWith(month))
                       .map((t) => (
                         <div
                           key={t.id}
-                          className="flex items-center justify-between border-b border-slate-100 py-2 text-sm dark:border-outline"
+                          className="data-row flex flex-wrap items-center justify-between gap-2 border-b border-outline py-3 text-sm"
                         >
                           <span>
                             {nameOf(accounts, t.from_account_id)} →{" "}
@@ -729,29 +715,28 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                   action="Nova categoria"
                   onAction={() => openForm("category")}
                 />
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div className="grid items-start gap-5 lg:grid-cols-2">
                   {(["expense", "income"] as const).map((type) => (
                     <Card key={type}>
-                      <h3 className="mb-3 font-bold">
-                        {type === "expense" ? "Despesas" : "Receitas"}
-                      </h3>
+                      <div className="mb-3 flex items-center justify-between gap-2 border-b border-outline pb-4"><div className="flex items-center gap-2"><span className={`grid h-9 w-9 place-items-center rounded-[var(--radius-control)] ${type === "expense" ? "bg-danger-soft text-finance-negative" : "bg-brand-subtle text-finance-positive dark:bg-brand-soft"}`}>{type === "expense" ? <TrendingDown size={18} /> : <TrendingUp size={18} />}</span><h3 className="text-base font-semibold">{type === "expense" ? "Despesas" : "Receitas"}</h3></div><span className="rounded-full bg-surface-subtle px-2.5 py-1 text-xs font-semibold text-muted">{categories.filter((c) => c.type === type).length}</span></div>
+                      {!categories.some((c) => c.type === type) && <p className="py-6 text-sm text-muted">Nenhuma categoria cadastrada.</p>}
                       {categories
                         .filter((c) => c.type === type)
                         .map((c) => (
                           <div
                             key={c.id}
-                            className="flex items-center justify-between border-b border-slate-100 py-2 text-sm dark:border-outline"
+                            className="data-row flex items-center justify-between gap-2 border-b border-outline py-3 text-sm"
                           >
-                            <span>
-                              {c.name}{" "}
+                            <span className="flex min-w-0 flex-wrap items-center gap-2 font-medium">
+                              {c.name}
                               {c.essential && (
-                                <span className="ml-2 rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-600">
+                                <span className="rounded-[var(--radius-small)] bg-brand-subtle px-2 py-1 text-xs font-medium text-action dark:bg-brand-soft dark:text-finance-positive">
                                   Essencial
                                 </span>
                               )}
                             </span>
                             <span>
-                              <Button
+                              <Button aria-label={`Editar categoria ${c.name}`} title="Editar categoria"
                                 variant="ghost"
                                 onClick={() =>
                                   openForm(
@@ -762,7 +747,7 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                               >
                                 <Pencil size={15} />
                               </Button>
-                              <Button
+                              <Button aria-label={`Excluir categoria ${c.name}`} title="Excluir categoria" className="text-danger-ink hover:bg-danger-soft hover:text-danger-ink"
                                 variant="ghost"
                                 onClick={() => remove("categories", c.id)}
                               >
@@ -787,17 +772,17 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                 <div className="grid gap-4 md:grid-cols-2">
                   {dashboard?.budgets.map((b) => (
                     <Card key={b.id}>
-                      <div className="flex justify-between">
-                        <h3 className="font-bold">{b.category_name}</h3>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <h3 className="text-base font-semibold">{b.category_name}</h3>
                         <span
                           className={
-                            b.alert ? "text-finance-negative" : "text-finance-positive"
+                            `money font-semibold ${b.alert ? "text-finance-negative" : "text-finance-positive"}`
                           }
                         >
                           {b.percent}%
                         </span>
                       </div>
-                      <div className="my-4 h-2 rounded-full bg-slate-100 dark:bg-slate-800">
+                      <div className="my-4 h-2 rounded-full bg-surface-subtle">
                         <div
                           className={`h-full rounded-full ${b.alert ? "bg-finance-negative" : "bg-finance-positive"}`}
                           style={{ width: `${Math.min(b.percent, 100)}%` }}
@@ -808,7 +793,7 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                         {brl(b.amount)}
                       </p>
                       {b.alert && (
-                        <p className="mt-2 text-sm font-medium text-rose-600">
+                        <p className="mt-2 text-sm font-medium text-finance-negative">
                           {b.percent > 100
                             ? "Limite ultrapassado"
                             : "Alerta de limite atingido"}
@@ -836,10 +821,11 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                     </Card>
                   ))}
                   {!dashboard?.budgets.length && (
-                    <Card>
-                      <p className="text-muted">
-                        Nenhum limite definido para este mês.
-                      </p>
+                    <Card className="flex min-h-72 flex-col items-center justify-center text-center md:col-span-2">
+                      <span className="mb-4 grid h-14 w-14 place-items-center rounded-[var(--radius-card)] bg-brand-subtle text-brand dark:bg-brand-soft"><Wallet size={26} /></span>
+                      <h3 className="text-lg font-semibold tracking-tight">Organize seus limites mensais</h3>
+                      <p className="mt-2 max-w-sm text-sm text-muted">Defina limites por categoria e acompanhe seus gastos ao longo do mês.</p>
+                      <Button className="mt-5" onClick={() => openForm("budget")}><Plus size={16} /> Definir meu primeiro limite</Button>
                     </Card>
                   )}
                 </div>
@@ -855,10 +841,10 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                 />
                 <div className="grid gap-4 md:grid-cols-2">
                   {recurrences.map((r) => (
-                    <Card key={r.id}>
-                      <div className="flex justify-between">
+                    <Card key={r.id} className="transition-colors hover:border-brand/30">
+                        <div className="flex flex-wrap justify-between gap-2">
                         <div>
-                          <h3 className="font-bold">{r.description}</h3>
+                          <div className="flex flex-wrap items-center gap-2"><h3 className="text-base font-semibold">{r.description}</h3><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${r.active ? "bg-brand-subtle text-action dark:bg-brand-soft dark:text-finance-positive" : "bg-surface-subtle text-muted"}`}>{r.active ? "Ativa" : "Inativa"}</span></div>
                           <p className="text-sm text-muted">
                             {r.frequency === "monthly"
                               ? "Mensal"
@@ -868,13 +854,14 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                             · início {dateLabel(r.start_date)}
                           </p>
                         </div>
-                        <strong>{brl(r.amount)}</strong>
+                        <strong className={`money text-base ${r.type === "income" ? "text-finance-positive" : "text-finance-negative"}`}>{r.type === "income" ? "+" : "−"} {brl(r.amount)}</strong>
                       </div>
                       <p className="mt-2 text-xs text-muted">
                         {nameOf(categories, r.category_id)} ·{" "}
                         {nameOf(accounts, r.account_id)}
                       </p>
-                      <div className="mt-3 flex gap-1">
+                      {transactions.filter((t) => t.recurrence_rule_id === r.id && t.status === "pending").sort((a, b) => a.reference_date.localeCompare(b.reference_date))[0] && <p className="mt-2 text-xs font-medium text-warning">Próxima ocorrência pendente: {dateLabel(transactions.filter((t) => t.recurrence_rule_id === r.id && t.status === "pending").sort((a, b) => a.reference_date.localeCompare(b.reference_date))[0].reference_date)}</p>}
+                      <div className="mt-4 flex gap-1 border-t border-outline pt-3">
                         <Button
                           variant="ghost"
                           onClick={() =>
@@ -896,26 +883,28 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                     </Card>
                   ))}
                   {!recurrences.length && (
-                    <Card>
-                      <p className="text-muted">
-                        Nenhuma recorrência cadastrada.
-                      </p>
+                    <Card className="md:col-span-2">
+                      <div className="flex min-h-64 flex-col items-center justify-center text-center"><span className="mb-4 grid h-14 w-14 place-items-center rounded-[var(--radius-card)] bg-brand-subtle text-brand dark:bg-brand-soft"><Repeat2 size={25} /></span><h3 className="text-lg font-semibold">Planeje lançamentos recorrentes</h3><p className="mt-2 max-w-sm text-sm text-muted">Cadastre uma regra para acompanhar as próximas ocorrências.</p><Button className="mt-5" onClick={() => openForm("recurrence")}>Nova recorrência</Button></div>
                     </Card>
                   )}
                 </div>
+                {transactions.some((t) => t.recurrence_rule_id) && <Card><h3 className="mb-3 text-base font-semibold">Ocorrências geradas</h3><div className="space-y-1">{transactions.filter((t) => t.recurrence_rule_id).slice(0, 10).map((t) => <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-outline py-3 text-sm last:border-0"><div><strong>{t.description}</strong><p className="text-xs text-muted">{dateLabel(t.reference_date)} · {nameOf(accounts, t.account_id)}</p></div><div className="flex items-center gap-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${t.status === "pending" ? "bg-warning-soft text-warning" : "bg-brand-subtle text-finance-positive dark:bg-brand-soft"}`}>{t.status === "pending" ? "Pendente" : "Concluída"}</span><strong className={`money ${t.type === "expense" ? "text-finance-negative" : "text-finance-positive"}`}>{brl(t.amount)}</strong>{t.status === "pending" && <Button variant="secondary" onClick={() => mutate(`transactions/${t.id}/status`, "POST", { status: "completed" })}>Concluir</Button>}</div></div>)}</div></Card>}
               </section>
             )}
             {page === "chat" && (
-              <ChatPanel
-                messages={messages}
-                chatState={chatState}
-                accounts={accounts}
-                categories={categories}
-                aliases={aliases}
-                settings={settings}
-                onSent={reload}
-                full
-              />
+              <section className="mx-auto max-w-5xl space-y-5">
+                <PageHeading title="Assistente HiCash" description="Converse sobre suas finanças ou registre movimentações com linguagem natural." />
+                <ChatPanel
+                  messages={messages}
+                  chatState={chatState}
+                  accounts={accounts}
+                  categories={categories}
+                  aliases={aliases}
+                  settings={settings}
+                  onSent={reload}
+                  full
+                />
+              </section>
             )}
             {page === "settings" && (
               <section className="space-y-5">
@@ -923,10 +912,10 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                   title="Configurações"
                   description="Contas, padrões e associações aprendidas."
                 />
-                <div className="grid gap-5 lg:grid-cols-2">
+                <div className="grid items-start gap-5 lg:grid-cols-2">
                   <Card>
                     <div className="mb-4 flex items-center justify-between">
-                      <h3 className="font-bold">Contas financeiras</h3>
+                      <h3 className="text-base font-semibold">Contas financeiras</h3>
                       <Button onClick={() => openForm("account")}>
                         <Plus size={15} /> Conta
                       </Button>
@@ -934,17 +923,14 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                     {accounts.map((a) => (
                       <div
                         key={a.id}
-                        className="flex items-center justify-between border-b border-slate-100 py-2 dark:border-outline"
+                        className="data-row flex flex-wrap items-center justify-between gap-2 border-b border-outline py-3"
                       >
-                        <span>
-                          {a.name}
-                          <small className="ml-2 text-muted">
-                            Inicial {brl(a.opening_balance)}
-                          </small>
-                        </span>
+                        <span className="grid gap-1"><strong className="text-sm">{a.name}</strong><small className="money text-xs text-muted">Saldo inicial {brl(a.opening_balance)}</small></span>
                         <span>
                           <Button
                             variant="ghost"
+                            aria-label={`Editar conta ${a.name}`}
+                            title="Editar conta"
                             onClick={() =>
                               openForm(
                                 "account",
@@ -956,6 +942,9 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                           </Button>
                           <Button
                             variant="ghost"
+                            aria-label={`Excluir conta ${a.name}`}
+                            title="Excluir conta"
+                            className="text-danger-ink hover:bg-danger-soft hover:text-danger-ink"
                             onClick={() => remove("accounts", a.id)}
                           >
                             <Trash2 size={15} />
@@ -970,43 +959,34 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                     )}
                   </Card>
                   <Card>
-                    <h3 className="mb-4 font-bold">Preferências</h3>
-                    <div className="space-y-3">
+                    <h3 className="mb-4 text-base font-semibold">Preferências</h3>
+                    <p className="mb-4 text-sm text-muted">Escolha a conta e a forma de pagamento sugeridas nos novos lançamentos.</p><div className="space-y-4">
                       <Field label="Conta padrão">
-                        <Select
-                          value={settings.default_account_id || ""}
-                          onChange={(e) =>
+                        <AppSelect
+                          value={String(settings.default_account_id || "")}
+                          onValueChange={(value) =>
                             setSettings({
                               ...settings,
                               default_account_id:
-                                Number(e.target.value) || null,
+                                Number(value) || null,
                             })
                           }
-                        >
-                          <option value="">Primeira conta</option>
-                          {accounts.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {a.name}
-                            </option>
-                          ))}
-                        </Select>
+                          options={[{ value: "", label: "Primeira conta" }, ...accounts.map((a) => ({ value: String(a.id), label: a.name }))]}
+                          ariaLabel="Conta padrão"
+                        />
                       </Field>
                       <Field label="Pagamento padrão">
-                        <Select
+                        <AppSelect
                           value={settings.default_payment_method || "pix"}
-                          onChange={(e) =>
+                          onValueChange={(value) =>
                             setSettings({
                               ...settings,
-                              default_payment_method: e.target.value,
+                              default_payment_method: value,
                             })
                           }
-                        >
-                          {paymentOptions.map(([v, l]) => (
-                            <option key={v} value={v}>
-                              {l}
-                            </option>
-                          ))}
-                        </Select>
+                          options={paymentOptions.map(([value, label]) => ({ value, label }))}
+                          ariaLabel="Pagamento padrão"
+                        />
                       </Field>
                       <Button
                         onClick={() =>
@@ -1019,12 +999,12 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                           })
                         }
                       >
-                        Salvar preferências
+                        {loading ? "Salvando…" : "Salvar preferências"}
                       </Button>
                     </div>
                   </Card>
                   <Card className="lg:col-span-2">
-                    <h3 className="mb-3 font-bold">Associações aprendidas</h3>
+                    <h3 className="mb-3 text-base font-semibold">Associações aprendidas</h3>
                     <p className="mb-3 text-sm text-muted">
                       Palavras associadas a categorias após confirmação ou
                       correção.
@@ -1032,13 +1012,16 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                     {aliases.map((a) => (
                       <div
                         key={a.id}
-                        className="flex items-center justify-between border-b border-slate-100 py-2 text-sm dark:border-outline"
+                        className="data-row flex flex-wrap items-center justify-between gap-2 border-b border-outline py-3 text-sm"
                       >
                         <span>
                           {a.keyword} → {nameOf(categories, a.category_id)}
                         </span>
                         <Button
                           variant="ghost"
+                          aria-label={`Excluir associação ${a.keyword}`}
+                          title="Excluir associação"
+                          className="text-danger-ink hover:bg-danger-soft hover:text-danger-ink"
                           onClick={() => remove("categories/aliases", a.id)}
                         >
                           <Trash2 size={15} />
@@ -1052,11 +1035,7 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                     )}
                   </Card>
                 </div>
-                <Card className="border-amber-200 bg-amber-50 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                  Compras no cartão de crédito entram nas despesas e nos
-                  orçamentos, mas não reduzem o saldo bancário. O controle de
-                  faturas não está disponível nesta versão.
-                </Card>
+                <div role="note" className="flex gap-3 rounded-[var(--radius-card)] border border-outline bg-surface-subtle p-4 text-sm text-muted"><Info size={19} className="mt-0.5 shrink-0 text-brand" aria-hidden="true" /><p>Compras no cartão de crédito entram nas despesas e nos orçamentos, mas não reduzem o saldo bancário. O controle de faturas não está disponível nesta versão.</p></div>
               </section>
             )}
           </div>
@@ -1065,29 +1044,23 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
       {page !== "chat" && (
         <>
           <Button
-            className="fixed bottom-5 right-5 z-30 rounded-full px-5 py-4 shadow-xl"
+            id="open-assistant"
+            aria-label="Abrir assistente"
+            className="fixed bottom-4 right-4 z-30 h-12 w-12 rounded-full p-0 shadow-[var(--hicash-shadow-popover)] sm:bottom-6 sm:right-6 sm:h-auto sm:w-auto sm:rounded-[var(--radius-control)] sm:px-4 sm:py-2.5"
             onClick={() => setFloatingChat(true)}
           >
-            <MessageCircle size={20} /> Assistente
+            <MessageCircle size={20} /><span className="hidden sm:inline">Assistente</span>
           </Button>
           {floatingChat && (
             <div
-              className="fixed inset-0 z-40 bg-slate-950/40"
-              onClick={() => setFloatingChat(false)}
+              className="pointer-events-none fixed inset-0 z-40 max-sm:pointer-events-auto max-sm:bg-slate-950/45"
+              onClick={(event) => { if (event.target === event.currentTarget) closeFloatingChat(); }}
             >
               <div
-                className="absolute bottom-0 right-0 h-[min(85vh,680px)] w-full max-w-[420px] overflow-hidden rounded-t-2xl bg-surface shadow-2xl sm:bottom-5 sm:right-5 sm:rounded-2xl dark:bg-surface"
-                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-label="Assistente HiCash"
+                className="pointer-events-auto absolute bottom-0 right-0 h-[100dvh] w-full overflow-hidden border border-outline bg-surface shadow-[var(--hicash-shadow-popover)] sm:bottom-5 sm:right-5 sm:h-[min(82dvh,720px)] sm:w-[440px] sm:rounded-[var(--radius-modal)]"
               >
-                <div className="flex justify-between border-b p-3 dark:border-outline">
-                  <strong className="flex items-center gap-2"><img src="/brand/mark-hicash.png" alt="" width="28" height="28" className="h-7 w-7 object-contain" />Assistente HiCash</strong>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setFloatingChat(false)}
-                  >
-                    <X size={18} />
-                  </Button>
-                </div>
                 <ChatPanel
                   messages={messages}
                   chatState={chatState}
@@ -1096,12 +1069,15 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
                   aliases={aliases}
                   settings={settings}
                   onSent={reload}
+                  onClose={closeFloatingChat}
+                  onExpand={() => { setFloatingChat(false); setPage("chat"); }}
                 />
               </div>
             </div>
           )}
         </>
       )}
+      <ConfirmDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }} loading={loading} onConfirm={() => { if (deleteTarget) { void mutate(`${deleteTarget.route}/${deleteTarget.id}`, "DELETE"); setDeleteTarget(null); } }} />
       <Modal
         open={kind !== null}
         onOpenChange={(v) => !v && setKind(null)}
@@ -1119,13 +1095,12 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
             {kind === "recurrence" && editing && (
               <div className="sm:col-span-2 space-y-3">
                 <Field label="Aplicar alterações">
-                  <Select
+                  <AppSelect
                     value={future ? "future" : "rule"}
-                    onChange={(e) => setFuture(e.target.value === "future")}
-                  >
-                    <option value="rule">Próximas gerações da regra</option>
-                    <option value="future">Todas as ocorrências futuras</option>
-                  </Select>
+                    onValueChange={(value) => setFuture(value === "future")}
+                    options={[{ value: "rule", label: "Próximas gerações da regra" }, { value: "future", label: "Todas as ocorrências futuras" }]}
+                    ariaLabel="Aplicar alterações"
+                  />
                 </Field>
                 {future && (
                   <Field label="A partir de">
@@ -1141,11 +1116,11 @@ function FinanceApp({ onLogout }: { onLogout: () => void }) {
               </div>
             )}
             {error && (
-              <p role="alert" className="text-sm text-rose-600 sm:col-span-2">
+              <p role="alert" className="text-sm text-danger-ink sm:col-span-2">
                 {error}
               </p>
             )}
-            <div className="flex justify-end gap-2 sm:col-span-2">
+            <div className="flex justify-end gap-2 border-t border-outline pt-4 sm:col-span-2">
               <Button
                 type="button"
                 variant="secondary"
@@ -1178,8 +1153,8 @@ function PageHeading({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h2 className="text-2xl font-bold">{title}</h2>
-        <p className="text-sm text-muted">{description}</p>
+        <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h2>
+        <p className="mt-1 text-sm text-muted">{description}</p>
       </div>
       {action && (
         <Button onClick={onAction}>
@@ -1225,18 +1200,13 @@ function FinanceFields({
   );
   const select = (label: string, key: string, options: [string, string][]) => (
     <Field label={label}>
-      <Select
+      <AppSelect
         required
         value={value(key)}
-        onChange={(e) => set(key, e.target.value)}
-      >
-        <option value="">Selecione</option>
-        {options.map(([v, l]) => (
-          <option key={v} value={v}>
-            {l}
-          </option>
-        ))}
-      </Select>
+        onValueChange={(next) => set(key, next)}
+        options={[{ value: "", label: "Selecione" }, ...options.map(([v, l]) => ({ value: v, label: l }))]}
+        ariaLabel={label}
+      />
     </Field>
   );
   const accountOptions = accounts.map(
@@ -1261,13 +1231,12 @@ function FinanceFields({
           ["income", "Receita"],
         ])}
         <Field label="Classificação">
-          <Select
+          <AppSelect
             value={form.essential ? "yes" : "no"}
-            onChange={(e) => set("essential", e.target.value === "yes")}
-          >
-            <option value="no">Não essencial</option>
-            <option value="yes">Essencial</option>
-          </Select>
+            onValueChange={(next) => set("essential", next === "yes")}
+            options={[{ value: "no", label: "Não essencial" }, { value: "yes", label: "Essencial" }]}
+            ariaLabel="Classificação"
+          />
         </Field>
       </>
     );
@@ -1331,13 +1300,12 @@ function FinanceFields({
           {field("Início", "start_date", "date")}
           {field("Fim (opcional)", "end_date", "date", false)}
           <Field label="Ativa">
-            <Select
+            <AppSelect
               value={form.active ? "yes" : "no"}
-              onChange={(e) => set("active", e.target.value === "yes")}
-            >
-              <option value="yes">Sim</option>
-              <option value="no">Não</option>
-            </Select>
+              onValueChange={(next) => set("active", next === "yes")}
+              options={[{ value: "yes", label: "Sim" }, { value: "no", label: "Não" }]}
+              ariaLabel="Ativa"
+            />
           </Field>
         </>
       )}
@@ -1370,33 +1338,37 @@ function DashboardPage({
       label: "Saldo efetivo",
       value: effective,
       Icon: Wallet,
-      color: "text-ink dark:text-white",
+      color: "text-ink",
+      accent: "bg-surface-subtle text-ink",
     },
     {
       label: "Saldo previsto",
       value: projected,
       Icon: TrendingUp,
-      color: "text-finance-positive",
+      color: "text-ink",
+      accent: "bg-brand-subtle text-action dark:bg-brand-soft dark:text-finance-positive",
     },
     {
       label: "Receitas",
       value: data?.totals.income || 0,
       Icon: TrendingUp,
       color: "text-finance-positive",
+      accent: "bg-brand-subtle text-action dark:bg-brand-soft dark:text-finance-positive",
     },
     {
       label: "Despesas",
       value: data?.totals.expense || 0,
       Icon: TrendingDown,
       color: "text-finance-negative",
+      accent: "bg-danger-soft text-finance-negative",
     },
   ];
   return (
     <section className="space-y-6">
-      <div className="flex flex-wrap justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">Bem-vindo às suas finanças</h2>
-          <p className="text-sm text-muted">
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">Bem-vindo às suas finanças</h2>
+          <p className="mt-1 text-sm text-muted">
             Resumo do período selecionado.
           </p>
         </div>
@@ -1410,13 +1382,13 @@ function DashboardPage({
         </div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {metrics.map(({ label, value, Icon, color }) => (
-          <Card key={label}>
-            <div className="mb-3 flex items-center justify-between text-sm text-muted">
-              {label}
-              <Icon size={18} />
+        {metrics.map(({ label, value, Icon, color, accent }, index) => (
+          <Card key={label} className={`min-w-0 ${index === 0 ? "border-brand/25 bg-gradient-to-br from-brand-subtle to-surface dark:from-brand-soft dark:to-surface" : ""}`}>
+            <div className="mb-5 flex items-center justify-between gap-2 text-sm font-medium text-muted">
+              <span>{label}</span>
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] ${accent}`}><Icon size={18} strokeWidth={1.9} /></span>
             </div>
-            <div className={`text-2xl font-extrabold ${color}`}>
+            <div className={`money truncate text-[clamp(1.45rem,2vw,1.9rem)] font-bold leading-tight tracking-tight ${color}`} title={brl(value)}>
               {brl(value)}
             </div>
           </Card>
@@ -1424,7 +1396,8 @@ function DashboardPage({
       </div>
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>
-          <h3 className="mb-4 font-bold">Despesas por categoria</h3>
+          <h3 className="mb-1 text-base font-semibold">Despesas por categoria</h3>
+          <p className="mb-5 text-xs text-muted">Distribuição dos gastos concluídos</p>
           <div className="h-64">
             {categoryChart.length ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -1436,8 +1409,8 @@ function DashboardPage({
                   <CartesianGrid stroke="var(--hicash-border)" strokeDasharray="3 3" horizontal={false} />
                   <XAxis type="number" tick={{ fill: "var(--hicash-slate)" }} tickFormatter={(n) => `R$ ${n}`} />
                   <YAxis type="category" dataKey="name" width={90} tick={{ fill: "var(--hicash-slate)" }} />
-                  <Tooltip formatter={(v) => brl(Number(v))} contentStyle={{ background: "var(--hicash-surface)", borderColor: "var(--hicash-border)", color: "var(--hicash-charcoal)" }} />
-                  <Bar dataKey="value" fill="var(--hicash-expense)" radius={[0, 6, 6, 0]} />
+                  <Tooltip formatter={(v) => brl(Number(v))} contentStyle={{ background: "var(--hicash-surface)", border: "1px solid var(--hicash-border)", borderRadius: "7px", color: "var(--hicash-charcoal)" }} />
+                  <Bar dataKey="value" name="Despesas" fill="var(--hicash-expense)" radius={[0, 5, 5, 0]} maxBarSize={24} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -1446,7 +1419,8 @@ function DashboardPage({
           </div>
         </Card>
         <Card>
-          <h3 className="mb-4 font-bold">Evolução mensal</h3>
+          <h3 className="mb-1 text-base font-semibold">Evolução mensal</h3>
+          <p className="mb-5 text-xs text-muted">Receitas e despesas ao longo do tempo</p>
           <div className="h-64">
             {data?.trend.length ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -1460,16 +1434,19 @@ function DashboardPage({
                   <CartesianGrid stroke="var(--hicash-border)" strokeDasharray="3 3" />
                   <XAxis dataKey="month" tick={{ fill: "var(--hicash-slate)" }} />
                   <YAxis tick={{ fill: "var(--hicash-slate)" }} />
-                  <Tooltip formatter={(v) => brl(Number(v))} contentStyle={{ background: "var(--hicash-surface)", borderColor: "var(--hicash-border)", color: "var(--hicash-charcoal)" }} />
+                  <Tooltip formatter={(v) => brl(Number(v))} contentStyle={{ background: "var(--hicash-surface)", border: "1px solid var(--hicash-border)", borderRadius: "7px", color: "var(--hicash-charcoal)" }} />
+                  <Legend verticalAlign="top" height={28} iconType="circle" />
                   <Area
                     type="monotone"
                     dataKey="income"
+                    name="Receitas"
                     stroke="var(--hicash-success)"
                     fill="var(--hicash-green-soft)"
                   />
                   <Area
                     type="monotone"
                     dataKey="expense"
+                    name="Despesas"
                     stroke="var(--hicash-expense)"
                     fill="var(--hicash-expense-soft)"
                   />
@@ -1486,14 +1463,14 @@ function DashboardPage({
       </div>
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>
-          <h3 className="mb-3 font-bold">Saldos por conta</h3>
+          <h3 className="mb-3 text-base font-semibold">Saldos por conta</h3>
           {data?.balances.map((a) => (
             <div
               key={a.id}
-              className="flex justify-between border-b border-slate-100 py-3 text-sm dark:border-outline"
+              className="data-row flex flex-wrap justify-between gap-2 border-b border-outline py-3 text-sm"
             >
               <span>{a.name}</span>
-              <span>
+              <span className="money">
                 <strong>{brl(a.effective)}</strong>
                 <small className="ml-2 text-muted">
                   Previsto {brl(a.projected)}
@@ -1508,14 +1485,14 @@ function DashboardPage({
           )}
         </Card>
         <Card>
-          <h3 className="mb-3 font-bold">Limites em acompanhamento</h3>
+          <h3 className="mb-3 text-base font-semibold">Limites em acompanhamento</h3>
           {data?.budgets.map((b) => (
             <div key={b.id} className="mb-3">
               <div className="mb-1 flex justify-between text-sm">
                 <span>{b.category_name}</span>
                 <span>{b.percent}%</span>
               </div>
-              <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800">
+              <div className="h-2 rounded-full bg-surface-subtle">
                 <div
                   className={`h-full rounded-full ${b.alert ? "bg-finance-negative" : "bg-finance-positive"}`}
                   style={{ width: `${Math.min(100, b.percent)}%` }}
@@ -1529,12 +1506,12 @@ function DashboardPage({
         </Card>
       </div>
       <Card>
-        <h3 className="mb-3 font-bold">Movimentações recentes</h3>
+        <h3 className="mb-3 text-base font-semibold">Movimentações recentes</h3>
         <div className="space-y-2">
           {data?.recent.map((t) => (
             <div
               key={t.id}
-              className="flex justify-between border-b border-slate-100 py-2 text-sm dark:border-outline"
+              className="data-row flex flex-wrap justify-between gap-2 border-b border-outline py-3 text-sm"
             >
               <span>
                 {t.description}
@@ -1545,7 +1522,7 @@ function DashboardPage({
               </span>
               <strong
                 className={
-                  t.type === "income" ? "text-finance-positive" : "text-finance-negative"
+                  `money ${t.type === "income" ? "text-finance-positive" : "text-finance-negative"}`
                 }
               >
                 {t.type === "income" ? "+" : "−"} {brl(t.amount)}
@@ -1583,6 +1560,8 @@ function ChatPanel({
   settings,
   onSent,
   full = false,
+  onClose,
+  onExpand,
 }: {
   messages: ChatMessage[];
   chatState: ChatState | null;
@@ -1592,10 +1571,13 @@ function ChatPanel({
   settings: Settings;
   onSent: () => Promise<void>;
   full?: boolean;
+  onClose?: () => void;
+  onExpand?: () => void;
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const scrollArea = useRef<HTMLDivElement>(null);
   const pending = chatState?.pending ? JSON.parse(chatState.pending) : null;
   const contextHistory = chatState?.context
     ? JSON.parse(chatState.context)
@@ -1603,6 +1585,7 @@ function ChatPanel({
   const context = Array.isArray(contextHistory)
     ? contextHistory.at(-1)
     : contextHistory;
+  useEffect(() => { if (scrollArea.current) scrollArea.current.scrollTop = scrollArea.current.scrollHeight; }, [messages.length, busy]);
   const send = async (message = text) => {
     if (!message.trim() || busy) return;
     setBusy(true);
@@ -1640,33 +1623,45 @@ function ChatPanel({
   };
   return (
     <div
-      className={`flex flex-col ${full ? "h-[calc(100vh-240px)] min-h-[500px] rounded-2xl border border-outline bg-surface dark:border-outline dark:bg-surface" : "h-[calc(100%-52px)]"}`}
+      className={`flex min-h-0 flex-col overflow-hidden bg-surface ${full ? "h-[max(620px,calc(100dvh-245px))] rounded-[var(--radius-card)] border border-outline shadow-[var(--hicash-shadow)]" : "h-full"}`}
     >
-      <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
+      <div className="flex min-h-[70px] items-center gap-3 border-b border-outline bg-surface px-4 py-3 sm:px-5">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[var(--radius-control)] bg-brand-subtle dark:bg-brand-soft"><img src="/brand/mark-hicash.png" alt="" width="32" height="32" className="h-8 w-8 object-contain" /></span>
+        <div className="min-w-0 flex-1"><strong className="block text-sm font-bold text-ink">Assistente HiCash</strong><span className="flex items-center gap-1.5 text-xs text-muted"><i aria-hidden="true" className="h-2 w-2 rounded-full bg-brand" /> Disponível para ajudar</span></div>
+        {onExpand && <Button variant="ghost" aria-label="Abrir assistente em página completa" title="Abrir página completa" className="min-w-10 px-2" onClick={onExpand}><Maximize2 size={18} /></Button>}
+        {onClose && <Button variant="ghost" aria-label="Fechar assistente" className="min-w-10 px-2" onClick={onClose}><X size={18} /></Button>}
+      </div>
+      <div ref={scrollArea} className="min-h-0 flex-1 space-y-5 overflow-y-auto bg-[var(--hicash-background)] p-4 sm:p-5" aria-label="Histórico da conversa">
         {!messages.length && (
-          <div className="mx-auto max-w-md py-16 text-center">
-            <h2 className="text-xl font-bold">Olá! Sou o assistente HiCash.</h2>
-            <p className="mt-2 text-sm text-muted">
+          <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center py-8 text-center">
+            <span className="mb-5 flex h-14 w-14 items-center justify-center rounded-[var(--radius-card)] bg-brand-subtle dark:bg-brand-soft"><img src="/brand/mark-hicash.png" alt="" width="36" height="36" className="h-9 w-9 object-contain" /></span>
+            <h2 className="text-lg font-semibold tracking-tight">Olá! Sou o assistente HiCash.</h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
               Posso registrar seus gastos, consultar suas finanças e ajudar você a economizar.
             </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-2 text-xs text-muted" aria-label="Exemplos de comandos">
+              <span className="rounded-[var(--radius-small)] border border-outline bg-surface-subtle px-2.5 py-1.5">Quanto gastei este mês?</span>
+              <span className="rounded-[var(--radius-small)] border border-outline bg-surface-subtle px-2.5 py-1.5">Mostrar meu saldo</span>
+            </div>
           </div>
         )}
         {messages.map((m) => (
           <div
             key={m.id}
-            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+            className={`mx-auto flex w-full ${full ? "max-w-3xl" : ""} ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
             {m.role === "assistant" && <img src="/brand/mark-hicash.png" alt="" width="28" height="28" loading="lazy" className="mr-2 mt-1 h-7 w-7 shrink-0 object-contain" />}
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${m.role === "user" ? "bg-brand text-brand-on" : "bg-canvas text-ink"}`}
+              className={`min-w-0 max-w-[90%] rounded-[var(--radius-card)] px-4 py-3 text-sm leading-relaxed sm:max-w-[82%] ${m.role === "user" ? "rounded-br-[3px] bg-brand-soft text-ink dark:bg-brand-soft" : "min-w-[min(310px,70vw)] rounded-bl-[3px] border border-outline bg-surface text-ink shadow-[var(--hicash-shadow)]"}`}
             >
               <p>{m.content}</p>
               {m.role === "assistant" && m.payload && (
-                <ChatExtras payload={m.payload} onChoose={send} />
+                <ChatResult payload={m.payload} onChoose={send} />
               )}
             </div>
           </div>
         ))}
+        {busy && <div role="status" aria-live="polite" className="mx-auto flex max-w-3xl items-center gap-2 pl-9 text-xs text-muted"><span className="h-2 w-2 animate-pulse rounded-full bg-brand" />Processando sua mensagem…</div>}
         {pending?.kind === "delete" && (
           <div className="flex gap-2">
             <Button onClick={() => send("sim")}>Confirmar exclusão</Button>
@@ -1676,7 +1671,7 @@ function ChatPanel({
           </div>
         )}
         {pending?.kind === "choose" && (
-          <div className="grid gap-2">
+          <div className="grid gap-2 pl-9">
             {pending.options.map((o: { id: number; label: string }) => (
               <Button
                 key={o.id}
@@ -1689,7 +1684,7 @@ function ChatPanel({
           </div>
         )}
         {error && (
-          <p role="alert" className="text-sm text-rose-600">
+          <p role="alert" className="text-sm text-danger-ink">
             {error}
           </p>
         )}
@@ -1699,54 +1694,23 @@ function ChatPanel({
           e.preventDefault();
           send();
         }}
-        className="flex gap-2 border-t border-outline p-3 dark:border-outline"
+        className="mx-auto flex w-full max-w-3xl gap-2 border-t border-outline bg-surface p-3 sm:p-4"
       >
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Digite um comando financeiro..."
+          placeholder="Digite uma mensagem ou comando financeiro..."
           aria-label="Mensagem"
         />
         <Button
           type="submit"
           disabled={busy || !text.trim()}
           aria-label="Enviar"
+          className="min-w-10 px-2.5"
         >
           <Send size={18} />
         </Button>
       </form>
     </div>
   );
-}
-function ChatExtras({
-  payload,
-  onChoose,
-}: {
-  payload: string;
-  onChoose: (m: string) => void;
-}) {
-  try {
-    const result = JSON.parse(payload);
-    return (
-      <>
-        {result.cards?.totals && (
-          <div className="mt-3 border-t border-slate-300 pt-2 text-xs">
-            Receitas {brl(result.cards.totals.income)} · Despesas{" "}
-            {brl(result.cards.totals.expense)}
-          </div>
-        )}
-        {result.options?.map((o: { id: number; label: string }) => (
-          <button
-            key={o.id}
-            className="mt-2 block text-left text-xs font-semibold text-finance-positive underline"
-            onClick={() => onChoose(String(o.id))}
-          >
-            {o.label}
-          </button>
-        ))}
-      </>
-    );
-  } catch {
-    return null;
-  }
 }

@@ -17,6 +17,7 @@ export type Transaction = {
   payment_method: string;
   note?: string;
   origin: string;
+  recurrence_rule_id?: number | null;
 };
 export type Budget = {
   id: number;

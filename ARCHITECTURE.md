@@ -20,6 +20,12 @@ Orçamento mensal apresenta gasto utilizado (despesas concluídas) e comprometid
 
 ## Contratos de integração
 
+### Apresentação da interface autenticada
+
+O frontend mantém a navegação autenticada por estado em `App.tsx`. Os controles comuns (`AppSelect`, modais e confirmações), perfil e período ficam em componentes compartilhados. O seletor de período continua emitindo `YYYY-MM`, preservando os filtros e cálculos atuais. O chat lateral e a página completa renderizam o mesmo histórico e os mesmos componentes de mensagem e resultado.
+
+O resultado de comandos do chat mantém `reply`, `cards` e `options`. Operações confirmadas podem acrescentar `presentation`, um metadado aditivo de interface. `transactions_created` contém `items` lidos do banco após a inserção; `transaction_updated`, `transaction_status_updated` e `transaction_deleted` contêm `item`; `budget_updated` contém o limite confirmado. Cada item de movimentação inclui identificador, tipo, descrição, valor, data, status, pagamento e nomes reais de conta e categoria. O backend persiste esse resultado no histórico e na resposta idempotente. Respostas antigas sem `presentation` continuam legíveis como texto ou pelos `cards` existentes.
+
 API JSON versionada em `/api/v1` para contas, movimentações, transferências, categorias e associações, orçamentos, recorrências, relatórios, mensagens/operações de chat e configurações. Erros de validação retornam campos e mensagens; comandos de chat retornam resultado estruturado, esclarecimento necessário ou confirmação pendente. Um identificador por comando impede repetição. Operações agrupadas validam todas as entradas antes de gravar qualquer uma.
 
 `POST /api/v1/chat/commands` recebe `{command_id, message, interpretation}`. A linha única de `chat_state` é bloqueada durante a operação; o identificador é consultado sob esse bloqueio e a resposta é guardada em `processed_commands`. O estado guarda a confirmação ou escolha pendente e as 12 últimas interações resumidas. O histórico integral permanece em `chat_messages`.
